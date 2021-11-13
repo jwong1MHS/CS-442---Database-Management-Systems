@@ -1,0 +1,183 @@
+-- Name: Jason Wong
+-- CWID: 10452057
+
+-- Query 1
+WITH agg AS
+(
+	SELECT cust, min(quant) min_q, max(quant) max_q, 
+			avg(quant) avg_q
+	FROM sales
+	GROUP BY cust
+),
+min_detail AS
+(
+	SELECT agg.cust, min_q, max_q, avg_q, prod, s.date, s.state
+	FROM agg, sales s
+	WHERE agg.cust = s.cust AND agg.min_q = s.quant
+)
+SELECT min_d.cust customer, min_q, min_d.prod min_prod, 
+		min_d.date min_date, min_d.state st, max_q, 
+		s.prod max_prod, s.date max_date, s.state st, avg_q
+FROM min_detail min_d, sales s
+WHERE min_d.cust = s.cust AND max_q = quant
+ORDER BY s.cust
+
+-- Query 2
+WITH oct_detail AS
+(
+	WITH t1 AS
+	(
+		SELECT cust, prod, max(quant) oct_max
+		FROM sales
+		WHERE sales.month = 10 AND sales.year >= 2018
+		GROUP BY cust, prod
+	)
+	SELECT t1.cust, t1.prod, oct_max, s.date oct_date
+	FROM t1, sales s
+	WHERE t1.cust = s.cust AND t1.prod = s.prod 
+			AND oct_max = quant AND s.month = 10 AND s.year >= 2018 ),
+nov_detail AS
+(
+	WITH t2 AS
+	(
+		SELECT cust, prod, min(quant) nov_min
+		FROM sales
+		WHERE sales.month = 11
+		GROUP BY cust, prod
+	)
+	SELECT t2.cust, t2.prod, nov_min, s.date nov_date
+	FROM t2, sales s
+	WHERE t2.cust = s.cust AND t2.prod = s.prod 
+			AND nov_min = quant AND s.month = 11
+),
+dec_detail AS
+(
+	WITH t3 AS
+	(
+		SELECT cust, prod, min(quant) dec_min
+		FROM sales
+		WHERE sales.month = 12
+		GROUP BY cust, prod
+	)
+	SELECT t3.cust, t3.prod, dec_min, s.date dec_date
+	FROM t3, sales s
+	WHERE t3.cust = s.cust AND t3.prod = s.prod 
+			AND dec_min = quant AND s.month = 12
+)
+SELECT o.cust customer, o.prod product, oct_max, oct_date, nov_min,
+ 		nov_date, dec_min, dec_date
+FROM oct_detail o NATURAL FULL OUTER JOIN nov_detail n 
+		NATURAL FULL OUTER JOIN dec_detail d
+ORDER BY customer, product
+
+-- Query 3
+WITH base AS
+(
+	SELECT sales.month, prod, sum(quant) total_q
+	FROM sales
+	GROUP BY sales.month, prod
+),
+MPP AS
+(
+	WITH MPPQ AS
+	(
+		SELECT base.month, max(total_q) max_total_q
+		FROM base
+		GROUP BY base.month	
+	)
+	SELECT base.month, base.prod, MPPQ.max_total_q
+	FROM MPPQ, base
+	WHERE MPPQ.month = base.month AND MPPQ.max_total_q = base.total_q
+),
+LPP AS
+(
+	WITH LPPQ AS
+	(
+		SELECT base.month, min(total_q) min_total_q
+		FROM base
+		GROUP BY base.month
+	)
+	SELECT base.month, base.prod, LPPQ.min_total_q
+	FROM LPPQ, base
+	WHERE LPPQ.month = base.month AND LPPQ.min_total_q = base.total_q
+)
+SELECT MPP.month, MPP.prod most_popular_prod, MPP.max_total_q most_pop_total_q, 
+		LPP.prod least_popular_prod, LPP.min_total_q least_pop_total_q
+FROM MPP, LPP
+WHERE MPP.month = LPP.month
+ORDER BY MPP.month
+
+-- Query 4
+WITH base AS
+(
+	SELECT prod, sales.month, sum(quant) total_q
+	FROM sales
+	GROUP BY prod, sales.month
+),
+MFM AS
+(
+	WITH MFMQ AS
+	(
+		SELECT prod, max(total_q) max_total_q
+		FROM base
+		GROUP BY prod
+	)
+	SELECT base.prod, base.month
+	FROM MFMQ, base
+	WHERE MFMQ.prod = base.prod AND MFMQ.max_total_q = base.total_q
+),
+LFM AS
+(
+	WITH LFMQ AS
+	(
+		SELECT prod, min(total_q) min_total_q
+		FROM base
+		GROUP BY prod
+	)
+	SELECT base.prod, base.month
+	FROM LFMQ, base
+	WHERE LFMQ.prod = base.prod AND LFMQ.min_total_q = base.total_q
+)
+SELECT MFM.prod product, MFM.month most_fav_mo, LFM.month least_fav_mo
+FROM MFM, LFM
+WHERE MFM.prod = LFM.prod
+ORDER BY product
+
+-- Query 5
+WITH base AS (
+	SELECT cust, prod, avg(quant) average, sum(quant) total, 
+			count(quant) count
+	FROM sales
+	WHERE year BETWEEN 2016 AND 2020
+	GROUP BY cust, prod
+),
+ct_detail AS (
+	SELECT cust, prod, avg(quant) ct_avg
+	FROM sales
+	WHERE sales.state = 'CT' AND year BETWEEN 2016 AND 2020
+	GROUP BY cust, prod
+),
+ny_detail AS (
+	SELECT cust, prod, avg(quant) ny_avg
+	FROM sales
+	WHERE sales.state = 'NY' AND year BETWEEN 2016 AND 2020
+	GROUP BY cust, prod
+),
+nj_detail AS (
+	SELECT cust, prod, avg(quant) nj_avg
+	FROM sales
+	WHERE sales.state = 'NJ' AND year BETWEEN 2016 AND 2020
+	GROUP BY cust, prod
+),
+pa_detail AS (
+	SELECT cust, prod, avg(quant) pa_avg
+	FROM sales
+	WHERE sales.state = 'PA' AND year BETWEEN 2016 AND 2020
+	GROUP BY cust, prod
+)
+SELECT base.prod product, base.cust customer, ct_avg, ny_avg, nj_avg, 
+		pa_avg, average, total, count
+FROM ct_detail NATURAL FULL OUTER JOIN ny_detail 
+		NATURAL FULL OUTER JOIN nj_detail NATURAL FULL OUTER JOIN
+		pa_detail NATURAL FULL OUTER JOIN base
+ORDER BY product, customer
