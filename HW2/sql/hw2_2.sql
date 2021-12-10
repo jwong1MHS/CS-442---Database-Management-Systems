@@ -42,6 +42,6 @@ a_avg AS (
 			base.state = sales_q.state AND base.q1 = (sales_q.q1-1)
 	GROUP BY base.cust, base.prod, base.state, base.q1
 )
-SELECT base.cust, base.prod, base.state, base.q1, before_avg, after_avg
+SELECT base.cust customer, base.prod product, base.state, base.q1, before_avg, after_avg
 FROM base NATURAL FULL OUTER JOIN b_avg NATURAL FULL OUTER JOIN a_avg
 ORDER BY base.cust, base.prod, base.state, base.q1
