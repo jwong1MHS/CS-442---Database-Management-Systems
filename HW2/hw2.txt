@@ -1,0 +1,147 @@
+-- Name: Jason Wong
+-- CWID: 10452057
+
+-- Query 1
+WITH base AS (
+	SELECT cust, prod, sales.month, sales.state, avg(quant) cust_avg
+	FROM sales
+	GROUP BY cust, prod, sales.month, sales.state
+	ORDER BY cust, prod, sales.month, sales.state
+),
+other_prod AS (
+	SELECT base.cust, base.prod, base.month, base.state,
+			avg(sales.quant) other_prod_avg
+	FROM base, sales
+	WHERE base.cust = sales.cust AND base.prod <> sales.prod AND
+			base.month = sales.month AND base.state = sales.state
+	GROUP BY base.cust, base.prod, base.month, base.state
+),
+other_month AS (
+	SELECT base.cust, base.prod, base.month, base.state,
+			avg(sales.quant) other_month_avg
+	FROM base, sales
+	WHERE base.cust = sales.cust AND base.prod = sales.prod AND 
+			base.month <> sales.month AND base.state = sales.state
+	GROUP BY base.cust, base.prod, base.month, base.state
+),
+other_state AS (
+	SELECT base.cust, base.prod, base.month, base.state,
+			avg(sales.quant) other_state_avg
+	FROM base, sales
+	WHERE base.cust = sales.cust AND base.prod = sales.prod AND
+			base.month = sales.month AND base.state <> sales.state
+	GROUP BY base.cust, base.prod, base.month, base.state
+)
+SELECT base.cust customer, base.prod product, base.month, base.state, cust_avg, 
+		other_prod_avg, other_month_avg, other_state_avg
+FROM base NATURAL FULL OUTER JOIN other_prod NATURAL FULL OUTER JOIN
+		other_month NATURAL FULL OUTER JOIN other_state
+
+--Query 2
+WITH sales_q AS (
+	SELECT *
+	FROM sales, 
+		(SELECT 1 AS Q1)
+		AS sales_q1
+	WHERE sales.month BETWEEN 1 AND 3
+	UNION
+	SELECT *
+	FROM sales, 
+		(SELECT 2 AS Q1)
+		AS sales_q2
+	WHERE sales.month BETWEEN 4 AND 6
+	UNION
+	SELECT *
+	FROM sales, 
+		(SELECT 3 AS Q1)
+		AS sales_q3
+	WHERE sales.month BETWEEN 7 AND 9
+	UNION
+	SELECT *
+	FROM sales, 
+		(SELECT 4 AS Q1)
+		AS sales_q4
+	WHERE sales.month BETWEEN 10 AND 12
+),
+base AS (
+	SELECT cust, prod, sales_q.state, q1
+	FROM sales_q
+	GROUP BY cust, prod, sales_q.state, q1
+),
+b_avg AS (
+	SELECT base.cust, base.prod, base.state, base.q1, avg(sales_q.quant) before_avg
+	FROM base, sales_q
+	WHERE base.cust = sales_q.cust AND base.prod = sales_q.prod AND 
+			base.state = sales_q.state AND base.q1 = (sales_q.q1+1)
+	GROUP BY base.cust, base.prod, base.state, base.q1
+),
+a_avg AS (
+	SELECT base.cust, base.prod, base.state, base.q1, avg(sales_q.quant) after_avg
+	FROM base, sales_q
+	WHERE base.cust = sales_q.cust AND base.prod = sales_q.prod AND 
+			base.state = sales_q.state AND base.q1 = (sales_q.q1-1)
+	GROUP BY base.cust, base.prod, base.state, base.q1
+)
+SELECT base.cust customer, base.prod product, base.state, base.q1, before_avg, after_avg
+FROM base NATURAL FULL OUTER JOIN b_avg NATURAL FULL OUTER JOIN a_avg
+ORDER BY base.cust, base.prod, base.state, base.q1
+
+--Query 3
+WITH base AS (
+	SELECT prod, quant
+	FROM sales
+	GROUP BY prod, quant
+	ORDER BY prod, quant
+),
+prod_count AS (
+	SELECT base.prod, base.quant, count(sales.quant) ct
+	FROM base, sales
+	WHERE base.prod = sales.prod AND base.quant >= sales.quant
+	GROUP BY base.prod, base.quant
+	ORDER BY base.prod, base.quant
+),
+sales_count AS (
+	SELECT prod_count.prod, prod_count.quant, ct
+	FROM prod_count, sales
+	WHERE prod_count.prod = sales.prod
+	AND prod_count.quant = sales.quant
+	ORDER BY prod_count.prod, prod_count.quant
+),
+max_prod AS (
+	SELECT prod, max(ct) max_p
+	FROM sales_count
+	GROUP BY prod
+	ORDER BY prod
+)
+SELECT sales_count.prod product, min(sales_count.quant) "median quant"
+FROM sales_count, max_prod
+WHERE sales_count.prod = max_prod.prod AND ct >= max_p / 2
+GROUP BY sales_count.prod
+ORDER BY sales_count.prod
+
+--Query 4
+WITH total_c AS (
+	SELECT cust, prod, sum(quant) total_q
+	FROM sales
+	GROUP BY cust, prod
+	ORDER BY cust, prod
+),
+month_c AS (
+	SELECT cust, prod, sales.month, sum(quant) sum_m
+	FROM sales
+	GROUP BY cust, prod, sales.month
+	ORDER BY cust, prod, sales.month
+),
+month_agg AS (
+	SELECT m1.cust, m1.prod, m1.month, sum(m2.sum_m) sum_q
+	FROM month_c m1, month_c m2
+	WHERE m1.cust = m2.cust AND m1.prod = m2.prod AND m1.month >= m2.month
+	GROUP BY m1.cust, m1.prod, m1.month
+	ORDER BY m1.cust, m1.prod, m1.month
+)
+SELECT month_agg.cust customer, month_agg.prod product, min(month_agg.month) "75% purchased by month"
+FROM month_agg, total_c
+WHERE month_agg.cust = total_c.cust AND month_agg.prod = total_c.prod
+		AND sum_q >= total_q * 0.75
+GROUP BY month_agg.cust, month_agg.prod
+ORDER BY month_agg.cust, month_agg.prod
